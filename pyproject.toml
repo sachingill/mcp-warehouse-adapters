@@ -14,6 +14,7 @@ dependencies = [
 snowflake = "mcp_warehouse_adapters.snowflake.warehouse:factory"
 
 [project.scripts]
+mwa-snowflake-setup = "mcp_warehouse_adapters.snowflake.setup:main"
 mwa-snowflake-load = "mcp_warehouse_adapters.snowflake.loader:main"
 
 [tool.uv.sources]

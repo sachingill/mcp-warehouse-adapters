@@ -1,6 +1,6 @@
 """Live tests against a real Snowflake account. Skipped unless SNOWFLAKE_ACCOUNT is set.
 
-Prerequisites: snowflake/setup.sql run once, then `uv run mwa-snowflake-load`.
+Prerequisites: `uv run mwa-snowflake-setup` once, then `uv run mwa-snowflake-load`.
 """
 
 import os

@@ -40,19 +40,25 @@ Use a personal trial account and the synthetic data only.
    openssl rsa -in ~/.snowflake/cpg_mcp_key.p8 -pubout -out ~/.snowflake/cpg_mcp_key.pub
    chmod 600 ~/.snowflake/cpg_mcp_key.p8
    ```
-2. **Account setup:** paste the public key body into [`snowflake/setup.sql`](snowflake/setup.sql) and run it in
-   Snowsight as `ACCOUNTADMIN`. It creates an XS warehouse with a credit cap, the `CPG_MCP.MAIN` schema,
-   one loader role plus one read-only role per server role, and a key-pair-only service user.
-3. **Environment** (in your shell profile, not in the repo):
+2. **Environment** (in your shell profile, never in the repo):
    ```bash
    export SNOWFLAKE_ACCOUNT=<orgname-accountname>
+   export SNOWFLAKE_ADMIN_USER=<your Snowsight login>        # setup only
+   export SNOWFLAKE_PUBLIC_KEY_PATH=~/.snowflake/cpg_mcp_key.pub
    export SNOWFLAKE_USER=CPG_MCP_SVC
    export SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/cpg_mcp_key.p8
    export SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=...   # or leave unset and use an unencrypted key
    ```
-4. **Load, test, run:**
+3. **Account setup**, once: runs [`setup.sql`](src/mcp_warehouse_adapters/snowflake/setup.sql) as `ACCOUNTADMIN`
+   (browser login), filling the service user's public key from `SNOWFLAKE_PUBLIC_KEY_PATH` in memory. It creates
+   an XS warehouse with a credit cap, the `CPG_MCP.MAIN` schema, one loader role plus one read-only role per
+   server role, and a key-pair-only service user.
    ```bash
    uv sync
+   uv run mwa-snowflake-setup
+   ```
+4. **Load, test, run:**
+   ```bash
    uv run mwa-snowflake-load        # synthetic data -> Parquet -> COPY INTO; views; grants; masks
    uv run pytest -q                 # offline tests + live contract and governance tests
    CPG_MCP_WAREHOUSE=snowflake CPG_MCP_ROLE=analyst uv run cpg-analytics-mcp
@@ -64,8 +70,9 @@ from both lines of defense.
 ## Layout
 
 ```
-snowflake/setup.sql                       one-time account setup (ACCOUNTADMIN)
 src/mcp_warehouse_adapters/snowflake/
+  setup.sql       one-time account setup; <PUBLIC_KEY> placeholder only
+  setup.py        runs setup.sql as ACCOUNTADMIN, key read from SNOWFLAKE_PUBLIC_KEY_PATH
   config.py       env-based settings, key-pair loading, server role -> platform role
   warehouse.py    SnowflakeWarehouse: qmark binding, query tag, timeout -> QueryTimeout, lowercase, no Decimal
   governance.py   roles.yaml -> GRANT statements and masking policies (pure, tested offline)

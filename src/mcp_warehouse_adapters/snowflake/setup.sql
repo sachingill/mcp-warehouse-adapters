@@ -1,6 +1,6 @@
 -- One-time Snowflake setup for cpg-analytics-mcp (trial / personal account only, synthetic data only).
--- Run in Snowsight as ACCOUNTADMIN. Before running, replace <PUBLIC_KEY> with the body of
--- ~/.snowflake/cpg_mcp_key.pub (the lines between BEGIN/END, joined, without the header lines).
+-- Run with `uv run mwa-snowflake-setup`: it fills <PUBLIC_KEY> in memory from SNOWFLAKE_PUBLIC_KEY_PATH
+-- and runs this file as ACCOUNTADMIN. Never paste a real key into this file; a test enforces that.
 -- Re-runnable: every statement is IF NOT EXISTS or idempotent.
 
 USE ROLE ACCOUNTADMIN;

@@ -79,3 +79,22 @@ def test_table_ddl_translates_duckdb_types():
     assert "week_ending TIMESTAMPNTZ" in ddl and "TIMESTAMP_S" not in ddl
     sqlglot.parse_one(ddl, read="snowflake")
     assert "CAST(week_ending AS TIMESTAMP) AS week_ending" in export_sql("fact_sales", cols, "/tmp/x.parquet")
+
+
+def test_setup_sql_never_contains_a_real_key():
+    from mcp_warehouse_adapters.snowflake.setup import PLACEHOLDER, SETUP_SQL
+
+    sql = SETUP_SQL.read_text()
+    assert f"RSA_PUBLIC_KEY = '{PLACEHOLDER}'" in sql
+    assert "MII" not in sql  # every PEM-encoded RSA key body starts with MII
+
+
+def test_setup_fills_key_from_file(tmp_path):
+    from mcp_warehouse_adapters.snowflake.setup import SETUP_SQL, public_key_body, render
+
+    pem = tmp_path / "key.pub"
+    pem.write_text("-----BEGIN PUBLIC KEY-----\nFAKEKEYLINE1\nFAKEKEYLINE2\n-----END PUBLIC KEY-----\n")
+    assert public_key_body(pem) == "FAKEKEYLINE1FAKEKEYLINE2"
+    assert "RSA_PUBLIC_KEY = 'FAKEKEYLINE1FAKEKEYLINE2'" in render(SETUP_SQL.read_text(), public_key_body(pem))
+    with pytest.raises(ValueError, match="placeholder"):
+        render("CREATE USER x RSA_PUBLIC_KEY = 'MIIrealkey'", "FAKEKEYLINE1FAKEKEYLINE2")
