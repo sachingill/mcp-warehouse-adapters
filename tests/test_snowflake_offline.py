@@ -98,3 +98,17 @@ def test_setup_fills_key_from_file(tmp_path):
     assert "RSA_PUBLIC_KEY = 'FAKEKEYLINE1FAKEKEYLINE2'" in render(SETUP_SQL.read_text(), public_key_body(pem))
     with pytest.raises(ValueError, match="placeholder"):
         render("CREATE USER x RSA_PUBLIC_KEY = 'MIIrealkey'", "FAKEKEYLINE1FAKEKEYLINE2")
+
+
+def test_public_key_path_expands_home(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from mcp_warehouse_adapters.snowflake.setup import public_key_body
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "key.pub").write_text("-----BEGIN PUBLIC KEY-----\nFAKEKEYLINE1\n-----END PUBLIC KEY-----\n")
+    assert public_key_body(Path("~/key.pub")) == "FAKEKEYLINE1"
+    private = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nFAKE\n-----END ENCRYPTED PRIVATE KEY-----\n"
+    (tmp_path / "key.p8").write_text(private)
+    with pytest.raises(ValueError, match="public key"):
+        public_key_body(Path("~/key.p8"))  # refuses a private key passed by mistake

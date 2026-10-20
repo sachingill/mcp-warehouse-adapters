@@ -21,9 +21,9 @@ PLACEHOLDER = "<PUBLIC_KEY>"
 
 def public_key_body(path: Path) -> str:
     """The base64 body of a PEM public key, without BEGIN/END lines, as Snowflake expects."""
-    lines = path.expanduser().read_text().strip().splitlines()
-    body = "".join(line.strip() for line in lines if "PUBLIC KEY" not in line)
-    if not body or "PRIVATE" in path.read_text():
+    text = path.expanduser().read_text()
+    body = "".join(line.strip() for line in text.strip().splitlines() if "PUBLIC KEY" not in line)
+    if not body or "PRIVATE" in text:
         raise ValueError(f"{path} does not look like a PEM public key.")
     return body
 
