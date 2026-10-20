@@ -18,6 +18,7 @@ import snowflake.connector
 import sqlglot
 from cpg_analytics_mcp.data.generate import VIEWS, build
 
+from mcp_warehouse_adapters.policy import export_sql
 from mcp_warehouse_adapters.snowflake.config import SnowflakeConfig
 from mcp_warehouse_adapters.snowflake.governance import (
     LOADER_ROLE,
@@ -47,12 +48,6 @@ def snowflake_ddl(table: str, columns: list[tuple[str, str]]) -> str:
     """CREATE TABLE in Snowflake SQL from DuckDB (name, type) pairs."""
     cols = ", ".join(f"{name} {_portable(ty)}" for name, ty in columns)
     return sqlglot.transpile(f"CREATE OR REPLACE TABLE {table} ({cols})", read="duckdb", write="snowflake")[0]
-
-
-def export_sql(table: str, columns: list[tuple[str, str]], path: Path) -> str:
-    """DuckDB COPY to Parquet, with timestamps normalised to microsecond TIMESTAMP."""
-    cols = ", ".join(f"CAST({n} AS TIMESTAMP) AS {n}" if ty.startswith("TIMESTAMP") else n for n, ty in columns)
-    return f"COPY (SELECT {cols} FROM {table}) TO '{path}' (FORMAT PARQUET)"
 
 
 def main() -> None:

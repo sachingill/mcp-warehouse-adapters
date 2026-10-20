@@ -7,15 +7,20 @@ requires-python = ">=3.12"
 dependencies = [
     "cpg-analytics-mcp",
     "cryptography>=43",
+    "databricks-sdk>=0.154.0",
+    "databricks-sql-connector>=4.7.0",
     "snowflake-connector-python>=3.12",
 ]
 
 [project.entry-points."cpg_analytics_mcp.warehouses"]
 snowflake = "mcp_warehouse_adapters.snowflake.warehouse:factory"
+databricks = "mcp_warehouse_adapters.databricks.warehouse:factory"
 
 [project.scripts]
 mwa-snowflake-setup = "mcp_warehouse_adapters.snowflake.setup:main"
 mwa-snowflake-load = "mcp_warehouse_adapters.snowflake.loader:main"
+mwa-databricks-setup = "mcp_warehouse_adapters.databricks.setup:main"
+mwa-databricks-load = "mcp_warehouse_adapters.databricks.loader:main"
 
 [tool.uv.sources]
 cpg-analytics-mcp = { git = "https://github.com/sachingill/cpg-analytics-mcp", branch = "main" }

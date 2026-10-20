@@ -3,7 +3,7 @@
 [![CI](https://github.com/sachingill/mcp-warehouse-adapters/actions/workflows/ci.yml/badge.svg)](https://github.com/sachingill/mcp-warehouse-adapters/actions/workflows/ci.yml)
 
 Run [cpg-analytics-mcp](https://github.com/sachingill/cpg-analytics-mcp), a governed MCP server for CPG
-commercial analytics, on **Snowflake** (Databricks next) instead of DuckDB.
+commercial analytics, on **Snowflake** or **Databricks** instead of DuckDB.
 
 ## Why this exists
 
@@ -35,17 +35,20 @@ policy generated from `roles.yaml` only reveals cost to `CPG_FINANCE` (and the l
 
 ![Snowsight: promo ROI by channel from V_PROMO_PERFORMANCE: Convenience 0.838, Discounter 0.738, Grocery 1.016, Online 0.76, Pharmacy 0.882](docs/images/snowflake-promo-roi.webp)
 
-Same question through the MCP server on both warehouses (`get_metric` → `promo_roi`, `range_roi` by channel):
+Same question through the MCP server, as the analyst role, on all three warehouses
+(`get_metric` → `promo_roi` / `range_roi` by channel):
 
-| Channel | DuckDB | Snowflake |
-|---|---|---|
-| Convenience | 0.838 / 0.771 | 0.838 / 0.771 |
-| Discounter | 0.738 / 0.665 | 0.738 / 0.665 |
-| Grocery | 1.016 / 0.970 | 1.016 / 0.970 |
-| Online | 0.760 / 0.744 | 0.760 / 0.744 |
-| Pharmacy | 0.882 / 0.788 | 0.882 / 0.788 |
+| Channel | DuckDB | Snowflake | Databricks |
+|---|---|---|---|
+| Convenience | 0.838 / 0.771 | 0.838 / 0.771 | 0.838 / 0.771 |
+| Discounter | 0.738 / 0.665 | 0.738 / 0.665 | 0.738 / 0.665 |
+| Grocery | 1.016 / 0.970 | 1.016 / 0.970 | 1.016 / 0.970 |
+| Online | 0.760 / 0.744 | 0.760 / 0.744 | 0.760 / 0.744 |
+| Pharmacy | 0.882 / 0.788 | 0.882 / 0.788 | 0.882 / 0.788 |
 
-Live test run: 23 passed (shared warehouse contract, masking, grants, secondary roles off, read-only role).
+Full test run with both platforms live: **48 passed**. Each platform runs the shared warehouse contract plus its own
+governance tests (cost hidden for analysts, governed ROI intact, finance sees cost, sales blocked, read-only
+identities; Snowflake secondary roles off; Databricks raw layer unreadable by every service principal).
 
 ## How it plugs in
 
@@ -93,9 +96,49 @@ Use a personal trial account and the synthetic data only.
 The server role selects the Snowflake role (`analyst` → `CPG_ANALYST`), so the same question gets the same policy
 from both lines of defense.
 
+## Databricks quickstart
+
+Use a personal Free Edition workspace and the synthetic data only.
+
+Databricks has no `USE ROLE`: permissions follow the identity. So each server role logs in as its **own service
+principal** (`cpg-mcp-analyst`, …) via OAuth machine-to-machine, and Unity Catalog enforces what `roles.yaml` says:
+
+```
+cpg_mcp.raw    base tables, real values, no grants to any service principal
+cpg_mcp.main   dynamic views:  dim_product.cogs_per_unit = CASE WHEN is_member('cpg_finance') THEN … END
+               analysis views: v_promo_performance reads raw.* with the owner's rights -> real ROI
+```
+
+Two platform findings shaped this design (both covered by tests):
+
+- **Column masks apply inside views as the querying user.** With a mask on `cogs_per_unit`, an analyst's promo ROI
+  through the view came back `NULL`. Snowflake has `INVOKER_ROLE()` for this; Unity Catalog does not. A protected
+  raw layer plus dynamic views gives the same outcome: cost hidden, governed ROI intact.
+- **Free Edition only has workspace-local groups**, and Unity Catalog cannot grant to them (`PRINCIPAL_DOES_NOT_EXIST`).
+  Grants therefore go to the service principals; the views check `is_member(...)`. In a full account, use account
+  groups and `is_account_group_member()`.
+
+1. **Admin token** (in your shell profile, never in the repo): Settings → Developer → Access tokens.
+   ```bash
+   export DATABRICKS_HOST=https://<workspace>.cloud.databricks.com
+   export DATABRICKS_TOKEN=...
+   ```
+2. **Identities**, once: creates one service principal and group per server role, grants SQL warehouse access, and
+   writes each principal's OAuth secret to `~/.databricks/cpg_mcp.env` (mode 600, never printed).
+   ```bash
+   uv run mwa-databricks-setup              # --remove deletes them again
+   ```
+3. **Load, test, run:**
+   ```bash
+   uv run mwa-databricks-load               # Parquet -> UC Volume -> tables; views; column mask; grants
+   uv run pytest -q
+   CPG_MCP_WAREHOUSE=databricks CPG_MCP_ROLE=analyst uv run cpg-analytics-mcp
+   ```
+
 ## Layout
 
 ```
+src/mcp_warehouse_adapters/policy.py   roles.yaml -> allowed objects and hidden columns (shared by both)
 src/mcp_warehouse_adapters/snowflake/
   setup.sql       one-time account setup; <PUBLIC_KEY> placeholder only
   setup.py        runs setup.sql as ACCOUNTADMIN, key read from SNOWFLAKE_PUBLIC_KEY_PATH
@@ -103,6 +146,12 @@ src/mcp_warehouse_adapters/snowflake/
   warehouse.py    SnowflakeWarehouse: qmark binding, query tag, timeout -> QueryTimeout, lowercase, no Decimal
   governance.py   roles.yaml -> GRANT statements and masking policies (pure, tested offline)
   loader.py       bulk load + views (DDL and views translated from DuckDB with sqlglot)
+src/mcp_warehouse_adapters/databricks/
+  config.py       env + private env file; one service principal per role; OAuth M2M (explicit auth type)
+  setup.py        creates principals, groups, warehouse access; secrets -> ~/.databricks/cpg_mcp.env (600)
+  governance.py   roles.yaml -> dynamic views over raw, grants on main only
+  loader.py       Parquet -> UC Volume -> raw tables; dynamic + analysis views; grants
+  warehouse.py    DatabricksWarehouse: `?` -> named params on the parsed SQL, statement timeout, contract
 tests/
   test_snowflake_offline.py   no account needed (runs in CI)
   test_snowflake_live.py      contract + platform governance (skipped without credentials)
@@ -111,7 +160,8 @@ tests/
 ## Roadmap
 
 - [x] Snowflake adapter, loader, governance push-down
-- [ ] Databricks adapter: SQL warehouse, OAuth, Unity Catalog grants and column masks, system-table audit
+- [x] Databricks adapter: service principal per role (OAuth M2M), raw layer + dynamic views, grants from roles.yaml
+- [ ] Databricks audit via system tables (`system.access.audit`, `system.query.history`)
 - [ ] Identity propagation: queries run as the end user via OAuth (REST statement APIs)
 
 MIT licensed. All data is synthetic.

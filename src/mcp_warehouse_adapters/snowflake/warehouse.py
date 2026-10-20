@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import math
-from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import snowflake.connector
 from cpg_analytics_mcp.warehouse import QueryResult, QueryTimeout, cap_rows
 from snowflake.connector.errors import ProgrammingError
 
+from mcp_warehouse_adapters.policy import plain
 from mcp_warehouse_adapters.snowflake.config import SnowflakeConfig
 
 if TYPE_CHECKING:
@@ -32,11 +32,7 @@ ORDER BY c.table_name, c.ordinal_position
 """
 
 
-def plain(value: Any) -> Any:
-    """Driver values -> plain Python, as the Warehouse contract requires (no Decimal)."""
-    if isinstance(value, Decimal):
-        return int(value) if value.as_tuple().exponent >= 0 else float(value)
-    return value
+__all__ = ["SnowflakeWarehouse", "factory", "plain"]
 
 
 class SnowflakeWarehouse:
