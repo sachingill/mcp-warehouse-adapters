@@ -21,6 +21,32 @@ and respect *their* permissions. So governance is pushed **down** to the platfor
 
 If a guardrail had a bug, Snowflake would still refuse.
 
+## Proof: running on Snowflake
+
+Screenshots from Snowsight on a trial account, after `mwa-snowflake-load`.
+
+**Unit cost is masked by Snowflake itself.** `cogs_per_unit` returns `null`, even for `ACCOUNTADMIN`: the masking
+policy generated from `roles.yaml` only reveals cost to `CPG_FINANCE` (and the loader that owns the views).
+
+![Snowsight: SELECT sku_name, cogs_per_unit returns null for every row](docs/images/snowflake-cost-masked.webp)
+
+**The governed ROI metric still works.** The view is owned by the loader role, so inside it the masking policy sees
+`INVOKER_ROLE() = 'CPG_LOADER'` and margin is computed from real cost. The numbers match the DuckDB build exactly.
+
+![Snowsight: promo ROI by channel from V_PROMO_PERFORMANCE: Convenience 0.838, Discounter 0.738, Grocery 1.016, Online 0.76, Pharmacy 0.882](docs/images/snowflake-promo-roi.webp)
+
+Same question through the MCP server on both warehouses (`get_metric` → `promo_roi`, `range_roi` by channel):
+
+| Channel | DuckDB | Snowflake |
+|---|---|---|
+| Convenience | 0.838 / 0.771 | 0.838 / 0.771 |
+| Discounter | 0.738 / 0.665 | 0.738 / 0.665 |
+| Grocery | 1.016 / 0.970 | 1.016 / 0.970 |
+| Online | 0.760 / 0.744 | 0.760 / 0.744 |
+| Pharmacy | 0.882 / 0.788 | 0.882 / 0.788 |
+
+Live test run: 23 passed (shared warehouse contract, masking, grants, secondary roles off, read-only role).
+
 ## How it plugs in
 
 The server talks to any warehouse through a two-method interface (`catalog()`, `query()`). This package registers
